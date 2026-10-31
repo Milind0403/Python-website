@@ -1,13 +1,12 @@
 
 import streamlit as st
-import requests
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+import random
 
-# --------------------------------
+# -------------------------------
 # PAGE CONFIGURATION
-# --------------------------------
+# -------------------------------
 
 st.set_page_config(
     page_title="Weather Data Analyzer",
@@ -15,403 +14,296 @@ st.set_page_config(
     layout="wide"
 )
 
-# --------------------------------
+# -------------------------------
 # CUSTOM CSS
-# --------------------------------
+# -------------------------------
 
 st.markdown("""
 <style>
-.main {
-    background-color: #f4f8fc;
+.stApp {
+    background-color: #f0f6fc;
 }
 .title {
     text-align: center;
     color: #1565c0;
-    font-size: 38px;
+    font-size: 36px;
     font-weight: bold;
-}
-.subtitle {
-    text-align: center;
-    color: gray;
-    font-size: 18px;
-}
-.metric-card {
-    background-color: #e3f2fd;
-    padding: 15px;
-    border-radius: 12px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --------------------------------
+# -------------------------------
 # HEADER
-# --------------------------------
+# -------------------------------
 
 st.markdown(
     '<div class="title">🌦️ Weather Data Analyzer System</div>',
     unsafe_allow_html=True
 )
 
-st.markdown(
-    '<div class="subtitle">Real-Time Weather Monitoring and Data Analysis Dashboard</div>',
-    unsafe_allow_html=True
+st.write(
+    "### Weather Monitoring, Visualization and Statistical Analysis"
 )
 
 st.divider()
 
-# --------------------------------
-# API CONFIGURATION
-# --------------------------------
+# -------------------------------
+# GENERATE SAMPLE DATA
+# -------------------------------
 
-st.sidebar.header("⚙️ Settings")
+@st.cache_data
+def generate_weather_data():
 
-st.sidebar.write("Enter your OpenWeatherMap API key.")
+    random.seed(42)
 
-api_key = st.sidebar.text_input(
-    "API Key",
-    type="password"
+    dates = pd.date_range(
+        start="2026-01-01",
+        periods=30,
+        freq="D"
+    )
+
+    data = {
+        "Date": dates,
+        "Temperature": [
+            random.randint(18, 40) for _ in dates
+        ],
+        "Humidity": [
+            random.randint(30, 95) for _ in dates
+        ],
+        "Wind Speed": [
+            round(random.uniform(2, 25), 2)
+            for _ in dates
+        ],
+        "Rainfall": [
+            round(random.uniform(0, 30), 2)
+            for _ in dates
+        ]
+    }
+
+    return pd.DataFrame(data)
+
+
+df = generate_weather_data()
+
+# -------------------------------
+# SIDEBAR
+# -------------------------------
+
+st.sidebar.title("⚙️ Dashboard Settings")
+
+st.sidebar.write("Select Weather Parameters")
+
+selected_city = st.sidebar.selectbox(
+    "Select City",
+    ["Pune", "Mumbai", "Delhi", "Chennai", "Bangalore"]
 )
 
-city = st.sidebar.text_input(
-    "Enter City Name",
-    value="Pune"
+st.sidebar.write("Upload Your Own Dataset")
+
+uploaded_file = st.sidebar.file_uploader(
+    "Upload CSV File",
+    type=["csv"]
 )
 
-analyze = st.sidebar.button(
-    "Analyze Weather",
-    type="primary",
+if uploaded_file is not None:
+
+    try:
+        uploaded_df = pd.read_csv(uploaded_file)
+
+        required_columns = [
+            "Date",
+            "Temperature",
+            "Humidity",
+            "Wind Speed",
+            "Rainfall"
+        ]
+
+        if all(col in uploaded_df.columns for col in required_columns):
+            df = uploaded_df.copy()
+            df["Date"] = pd.to_datetime(df["Date"])
+            st.sidebar.success("Dataset uploaded successfully!")
+        else:
+            st.sidebar.error(
+                "CSV must contain: Date, Temperature, Humidity, Wind Speed, Rainfall"
+            )
+
+    except Exception as e:
+        st.sidebar.error(f"Error reading CSV: {e}")
+
+# -------------------------------
+# WEATHER DATA
+# -------------------------------
+
+st.subheader(f"📍 Weather Dashboard - {selected_city}")
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric(
+    "🌡️ Average Temperature",
+    f"{df['Temperature'].mean():.1f} °C"
+)
+
+col2.metric(
+    "💧 Average Humidity",
+    f"{df['Humidity'].mean():.1f}%"
+)
+
+col3.metric(
+    "💨 Average Wind Speed",
+    f"{df['Wind Speed'].mean():.1f} km/h"
+)
+
+col4.metric(
+    "🌧️ Total Rainfall",
+    f"{df['Rainfall'].sum():.1f} mm"
+)
+
+st.divider()
+
+# -------------------------------
+# DATA TABLE
+# -------------------------------
+
+st.subheader("📋 Weather Dataset")
+
+st.dataframe(
+    df,
     use_container_width=True
 )
 
-# --------------------------------
-# API URLS
-# --------------------------------
+# -------------------------------
+# TEMPERATURE ANALYSIS
+# -------------------------------
 
-CURRENT_URL = "https://api.openweathermap.org/data/2.5/weather"
-FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
+st.subheader("🌡️ Temperature Analysis")
 
+fig1 = px.line(
+    df,
+    x="Date",
+    y="Temperature",
+    markers=True,
+    title="Daily Temperature Analysis",
+    template="plotly_white"
+)
 
-# --------------------------------
-# FETCH WEATHER DATA
-# --------------------------------
+st.plotly_chart(fig1, use_container_width=True)
 
-def get_weather(city, api_key):
+# -------------------------------
+# HUMIDITY ANALYSIS
+# -------------------------------
 
-    params = {
-        "q": city,
-        "appid": api_key,
-        "units": "metric"
-    }
+st.subheader("💧 Humidity Analysis")
 
-    response = requests.get(
-        CURRENT_URL,
-        params=params,
-        timeout=15
-    )
+fig2 = px.bar(
+    df,
+    x="Date",
+    y="Humidity",
+    title="Daily Humidity Analysis",
+    template="plotly_white"
+)
 
-    if response.status_code != 200:
-        raise ValueError(
-            response.json().get(
-                "message",
-                "Unable to fetch weather data."
-            )
-        )
+st.plotly_chart(fig2, use_container_width=True)
 
-    return response.json()
+# -------------------------------
+# WIND SPEED ANALYSIS
+# -------------------------------
 
+st.subheader("💨 Wind Speed Analysis")
 
-# --------------------------------
-# FETCH FORECAST DATA
-# --------------------------------
+fig3 = px.area(
+    df,
+    x="Date",
+    y="Wind Speed",
+    title="Wind Speed Analysis",
+    template="plotly_white"
+)
 
-def get_forecast(city, api_key):
+st.plotly_chart(fig3, use_container_width=True)
 
-    params = {
-        "q": city,
-        "appid": api_key,
-        "units": "metric"
-    }
+# -------------------------------
+# RAINFALL ANALYSIS
+# -------------------------------
 
-    response = requests.get(
-        FORECAST_URL,
-        params=params,
-        timeout=15
-    )
+st.subheader("🌧️ Rainfall Analysis")
 
-    if response.status_code != 200:
-        raise ValueError(
-            response.json().get(
-                "message",
-                "Unable to fetch forecast data."
-            )
-        )
+fig4 = px.bar(
+    df,
+    x="Date",
+    y="Rainfall",
+    title="Daily Rainfall Analysis",
+    template="plotly_white"
+)
 
-    return response.json()
+st.plotly_chart(fig4, use_container_width=True)
 
+# -------------------------------
+# STATISTICAL ANALYSIS
+# -------------------------------
 
-# --------------------------------
-# WEATHER ANALYSIS
-# --------------------------------
+st.subheader("📊 Statistical Weather Analysis")
 
-if analyze:
+col1, col2, col3 = st.columns(3)
 
-    if not api_key.strip():
-        st.error("Please enter your OpenWeatherMap API key.")
+col1.metric(
+    "Maximum Temperature",
+    f"{df['Temperature'].max()} °C"
+)
 
-    elif not city.strip():
-        st.error("Please enter a city name.")
+col2.metric(
+    "Minimum Temperature",
+    f"{df['Temperature'].min()} °C"
+)
 
-    else:
+col3.metric(
+    "Average Temperature",
+    f"{df['Temperature'].mean():.2f} °C"
+)
 
-        try:
+st.write("### Additional Statistics")
 
-            with st.spinner("Fetching weather data..."):
+st.write("Average Humidity:", round(df["Humidity"].mean(), 2), "%")
+st.write("Maximum Wind Speed:", round(df["Wind Speed"].max(), 2), "km/h")
+st.write("Total Rainfall:", round(df["Rainfall"].sum(), 2), "mm")
 
-                weather = get_weather(city, api_key)
-                forecast = get_forecast(city, api_key)
+# -------------------------------
+# CORRELATION ANALYSIS
+# -------------------------------
 
-            st.success(
-                f"Weather data loaded successfully for {weather['name']}!"
-            )
+st.subheader("📈 Weather Correlation Analysis")
 
-            # Current Weather Information
+corr = df[
+    ["Temperature", "Humidity", "Wind Speed", "Rainfall"]
+].corr()
 
-            st.subheader("📍 Current Weather Information")
+fig5 = px.imshow(
+    corr,
+    text_auto=True,
+    color_continuous_scale="RdBu_r",
+    title="Weather Parameter Correlation",
+    aspect="auto"
+)
 
-            col1, col2, col3, col4 = st.columns(4)
+st.plotly_chart(fig5, use_container_width=True)
 
-            temperature = weather["main"]["temp"]
-            humidity = weather["main"]["humidity"]
-            wind_speed = weather["wind"]["speed"]
-            pressure = weather["main"]["pressure"]
-
-            col1.metric(
-                "🌡️ Temperature",
-                f"{temperature} °C"
-            )
-
-            col2.metric(
-                "💧 Humidity",
-                f"{humidity}%"
-            )
-
-            col3.metric(
-                "💨 Wind Speed",
-                f"{wind_speed} m/s"
-            )
-
-            col4.metric(
-                "🌍 Pressure",
-                f"{pressure} hPa"
-            )
-
-            st.divider()
-
-            # Weather Details
-
-            st.subheader("🌤️ Weather Details")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.write("**City:**", weather["name"])
-                st.write("**Country:**", weather["sys"]["country"])
-                st.write(
-                    "**Weather:**",
-                    weather["weather"][0]["description"].title()
-                )
-
-            with col2:
-                st.write(
-                    "**Feels Like:**",
-                    f"{weather['main']['feels_like']} °C"
-                )
-                st.write(
-                    "**Minimum Temperature:**",
-                    f"{weather['main']['temp_min']} °C"
-                )
-                st.write(
-                    "**Maximum Temperature:**",
-                    f"{weather['main']['temp_max']} °C"
-                )
-
-            st.divider()
-
-            # --------------------------------
-            # FORECAST DATAFRAME
-            # --------------------------------
-
-            st.subheader("📅 5-Day Weather Forecast")
-
-            forecast_list = forecast["list"]
-
-            data = []
-
-            for item in forecast_list:
-
-                data.append({
-                    "Date": datetime.fromtimestamp(
-                        item["dt"]
-                    ),
-                    "Temperature": item["main"]["temp"],
-                    "Humidity": item["main"]["humidity"],
-                    "Wind Speed": item["wind"]["speed"],
-                    "Weather": item["weather"][0]["description"]
-                })
-
-            df = pd.DataFrame(data)
-
-            st.dataframe(
-                df,
-                use_container_width=True
-            )
-
-            # --------------------------------
-            # TEMPERATURE CHART
-            # --------------------------------
-
-            st.subheader("📈 Temperature Analysis")
-
-            fig1 = px.line(
-                df,
-                x="Date",
-                y="Temperature",
-                title="Temperature Forecast",
-                markers=True,
-                template="plotly_white"
-            )
-
-            fig1.update_layout(
-                xaxis_title="Date and Time",
-                yaxis_title="Temperature (°C)"
-            )
-
-            st.plotly_chart(
-                fig1,
-                use_container_width=True
-            )
-
-            # --------------------------------
-            # HUMIDITY CHART
-            # --------------------------------
+# -------------------------------
+# DOWNLOAD REPORT
+# -------------------------------
 
-            st.subheader("💧 Humidity Analysis")
-
-            fig2 = px.area(
-                df,
-                x="Date",
-                y="Humidity",
-                title="Humidity Forecast",
-                template="plotly_white"
-            )
+st.divider()
 
-            st.plotly_chart(
-                fig2,
-                use_container_width=True
-            )
+st.subheader("📥 Download Weather Report")
 
-            # --------------------------------
-            # WIND SPEED CHART
-            # --------------------------------
-
-            st.subheader("💨 Wind Speed Analysis")
-
-            fig3 = px.bar(
-                df,
-                x="Date",
-                y="Wind Speed",
-                title="Wind Speed Forecast",
-                template="plotly_white"
-            )
-
-            st.plotly_chart(
-                fig3,
-                use_container_width=True
-            )
-
-            # --------------------------------
-            # STATISTICAL ANALYSIS
-            # --------------------------------
-
-            st.subheader("📊 Statistical Weather Analysis")
-
-            col1, col2, col3 = st.columns(3)
-
-            col1.metric(
-                "Average Temperature",
-                f"{df['Temperature'].mean():.2f} °C"
-            )
-
-            col2.metric(
-                "Maximum Temperature",
-                f"{df['Temperature'].max():.2f} °C"
-            )
-
-            col3.metric(
-                "Minimum Temperature",
-                f"{df['Temperature'].min():.2f} °C"
-            )
-
-            st.write("**Average Humidity:**",
-                     f"{df['Humidity'].mean():.2f}%")
-
-            st.write("**Average Wind Speed:**",
-                     f"{df['Wind Speed'].mean():.2f} m/s")
-
-            # --------------------------------
-            # DOWNLOAD CSV
-            # --------------------------------
-
-            st.divider()
-
-            st.subheader("📥 Download Weather Report")
-
-            csv = df.to_csv(index=False).encode("utf-8")
-
-            st.download_button(
-                label="Download Weather Data CSV",
-                data=csv,
-                file_name=f"{city}_weather_report.csv",
-                mime="text/csv"
-            )
-
-            st.caption(
-                "Data source: OpenWeatherMap API"
-            )
-
-        except requests.exceptions.RequestException as e:
-
-            st.error(f"Network error: {e}")
-
-        except (ValueError, KeyError, TypeError) as e:
-
-            st.error(f"Weather analysis error: {e}")
-
-# --------------------------------
-# DEFAULT SCREEN
-# --------------------------------
-
-else:
-
-    st.info(
-        "👈 Enter your API key and city name, "
-        "then click Analyze Weather."
-    )
-
-    st.markdown("""
-    ### 🌍 About This Project
-
-    The Weather Data Analyzer System is a Python-based
-    web application developed using Streamlit.
-
-    It collects real-time weather information and
-    provides graphical and statistical analysis.
-
-    **Main Modules:**
-    - Real-time weather monitoring
-    - Weather forecast analysis
-    - Temperature visualization
-    - Humidity analysis
-    - Wind speed analysis
-    - CSV report generation
-    """)
+csv = df.to_csv(index=False).encode("utf-8")
+
+st.download_button(
+    label="Download Weather Data CSV",
+    data=csv,
+    file_name="weather_report.csv",
+    mime="text/csv"
+)
+
+st.success("Weather Data Analysis Completed Successfully!")
+
+st.caption(
+    "Weather Data Analyzer System | Developed using Python and Streamlit"
+)
